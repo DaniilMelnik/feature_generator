@@ -1,0 +1,13 @@
+# Pinned to EXACTLY the host's data-science library versions (see
+# ../../../../pyproject.toml / uv.lock) so fit()/transform() results computed
+# inside the sandbox are bit-for-bit reproducible with the offline dataset
+# builder -- this reproducibility is required for the serving-parity diff
+# (serving_parity.replay_simulator) to be meaningful.
+#
+# A dedicated test (test_docker_sandbox.py::test_requirements_pinned_to_host_versions)
+# fails CI if this drifts from the host's installed versions.
+pandas==3.0.5
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.0
+pyarrow==25.0.0

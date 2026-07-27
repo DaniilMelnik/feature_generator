@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_name": { "type": "string" },
+          "verdict": {
+            "type": "string",
+            "enum": ["approve", "reject", "needs_revision"]
+          },
+          "concerns": { "type": "array", "items": { "type": "string" } },
+          "confidence": { "type": "number" }
+        },
+        "required": ["feature_name", "verdict", "concerns", "confidence"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["verdicts"],
+  "additionalProperties": false
+}

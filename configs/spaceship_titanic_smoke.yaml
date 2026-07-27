@@ -1,0 +1,46 @@
+# Smoke-test variant of spaceship_titanic.yaml: same dataset/columns, but a
+# tight time budget and a smaller per-iteration fan-out so the first real
+# (paid) run against the Anthropic API + Docker sandbox is cheap and fast to
+# sanity-check end to end before committing to a full budget.
+
+dataset:
+  name: spaceship_titanic
+  tables:
+    - name: passengers
+      path: data/spaceship_titanic/train.csv
+      role: primary
+  target_column: Transported
+  target_table: passengers
+  id_columns: [PassengerId]
+  time_column: null
+  known_leakage_columns: [Name]
+
+stability:
+  method: bootstrap_resampling
+  bootstrap_iterations: 30
+
+holdout:
+  enabled: true
+  fraction: 0.15
+  method: random_stratified
+
+budget:
+  max_wall_clock_minutes: 4
+  stalled_iterations_before_escalation: 3
+
+sandbox:
+  backend: docker
+  timeout_seconds: 60
+  memory_limit: 1g
+  cpus: 1.0
+
+cv_folds: 5
+random_seed: 42
+hypotheses_per_iteration: 1
+
+output:
+  run_dir: runs/spaceship_titanic_smoke
+  knowledge_base_path: runs/spaceship_titanic_smoke/knowledge_base.duckdb
+  results_store_path: runs/spaceship_titanic_smoke/results_store.duckdb
+  feature_store_dir: runs/spaceship_titanic_smoke/feature_store
+  checkpoint_sqlite_path: runs/spaceship_titanic_smoke/checkpoints.sqlite

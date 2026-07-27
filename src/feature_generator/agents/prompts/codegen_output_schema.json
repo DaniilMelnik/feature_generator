@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "feature_name": { "type": "string" },
+    "source_code": { "type": "string" },
+    "output_dtype": {
+      "type": "string",
+      "enum": ["float64", "int64", "bool", "category"]
+    }
+  },
+  "required": ["feature_name", "source_code", "output_dtype"],
+  "additionalProperties": false
+}

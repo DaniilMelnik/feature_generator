@@ -1,0 +1,45 @@
+# Kaggle "Spaceship Titanic" -- single table, iid, no time axis.
+# https://www.kaggle.com/competitions/spaceship-titanic
+
+dataset:
+  name: spaceship_titanic
+  tables:
+    - name: passengers
+      path: data/spaceship_titanic/train.csv
+      role: primary
+  target_column: Transported
+  target_table: passengers
+  id_columns: [PassengerId]
+  time_column: null
+  known_leakage_columns: [Name]  # not predictive, but a plausible LLM misuse (e.g. hashing) worth flagging
+
+stability:
+  method: bootstrap_resampling
+  bootstrap_iterations: 30
+
+holdout:
+  enabled: true
+  fraction: 0.15
+  method: random_stratified
+
+budget:
+  max_wall_clock_minutes: 60  # 1-hour test run, validating the batched sandbox + hypotheses_per_iteration=15
+  max_total_tokens: 500000  # conservative safety cap, roughly ~$5 blended Sonnet5/Opus5 spend
+  stalled_iterations_before_escalation: 3
+
+sandbox:
+  backend: docker
+  timeout_seconds: 60
+  memory_limit: 1g
+  cpus: 1.0
+
+cv_folds: 5
+random_seed: 42
+hypotheses_per_iteration: 15
+
+output:
+  run_dir: runs/spaceship_titanic
+  knowledge_base_path: runs/spaceship_titanic/knowledge_base.duckdb
+  results_store_path: runs/spaceship_titanic/results_store.duckdb
+  feature_store_dir: runs/spaceship_titanic/feature_store
+  checkpoint_sqlite_path: runs/spaceship_titanic/checkpoints.sqlite

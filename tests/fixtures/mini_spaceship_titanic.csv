@@ -1,0 +1,61 @@
+PassengerId,HomePlanet,CryoSleep,Cabin,Destination,Age,VIP,RoomService,FoodCourt,ShoppingMall,Spa,VRDeck,Name,Transported
+0001_01,Europa,False,T/1711/P,,,False,44.2,47.3,237.8,278.2,122.4,Person_0 Surname_0,True
+0001_02,Earth,False,B/1401/S,55 Cancri e,31.0,,323.1,621.2,524.9,355.2,125.1,Person_1 Surname_1,False
+0002_01,Mars,False,A/1469/P,TRAPPIST-1e,27.0,False,71.1,7.7,2.5,175.8,4.8,Person_2 Surname_2,False
+0002_02,Europa,False,E/1190/P,55 Cancri e,15.0,False,138.5,222.7,109.7,677.5,441.3,Person_3 Surname_3,True
+0003_01,Earth,False,B/120/P,55 Cancri e,6.0,False,173.8,19.3,269.6,310.3,811.2,Person_4 Surname_4,True
+0003_02,Mars,False,G/784/S,TRAPPIST-1e,22.0,False,36.0,491.5,454.7,35.7,136.9,Person_5 Surname_5,True
+0004_01,Europa,False,D/991/P,,,False,586.6,17.3,563.5,647.2,82.6,Person_6 Surname_6,True
+0004_02,Europa,True,A/1830/S,55 Cancri e,54.0,False,0.0,0.0,0.0,0.0,0.0,Person_7 Surname_7,False
+0005_01,Earth,True,T/438/S,PSO J318.5-22,31.0,False,0.0,0.0,0.0,0.0,0.0,Person_8 Surname_8,True
+0005_02,Earth,False,E/993/S,TRAPPIST-1e,,False,21.6,908.1,68.3,62.0,194.7,Person_9 Surname_9,True
+0006_01,Earth,True,C/688/S,TRAPPIST-1e,22.0,False,0.0,0.0,0.0,0.0,0.0,Person_10 Surname_10,True
+0006_02,Mars,False,F/268/P,55 Cancri e,12.0,False,25.4,234.9,53.0,229.2,86.2,Person_11 Surname_11,True
+0007_01,Europa,,E/206/S,TRAPPIST-1e,15.0,False,65.3,195.9,85.9,14.7,385.2,Person_12 Surname_12,True
+0007_02,Mars,True,,TRAPPIST-1e,19.0,False,0.0,0.0,0.0,0.0,0.0,Person_13 Surname_13,True
+0008_01,Earth,True,G/164/S,55 Cancri e,59.0,True,0.0,0.0,0.0,0.0,0.0,Person_14 Surname_14,True
+0008_02,Earth,True,D/134/S,TRAPPIST-1e,18.0,False,0.0,0.0,0.0,0.0,0.0,Person_15 Surname_15,False
+0009_01,Europa,True,F/701/S,PSO J318.5-22,41.0,False,0.0,0.0,0.0,0.0,0.0,Person_16 Surname_16,True
+0009_02,Earth,False,T/403/S,,16.0,False,14.9,12.2,191.5,5.1,74.7,Person_17 Surname_0,False
+0010_01,Mars,False,E/1109/P,TRAPPIST-1e,42.0,False,194.1,1071.8,11.8,5.8,45.1,Person_18 Surname_1,False
+0010_02,Europa,False,F/35/S,55 Cancri e,34.0,,10.1,165.6,64.0,76.3,65.7,Person_19 Surname_2,False
+0011_01,Europa,False,C/603/S,PSO J318.5-22,27.0,False,535.6,59.0,116.8,73.0,84.4,Person_20 Surname_3,False
+0011_02,Earth,False,B/906/S,TRAPPIST-1e,28.0,False,50.8,117.3,435.1,204.1,51.5,Person_21 Surname_4,False
+0012_01,,False,D/1926/P,TRAPPIST-1e,20.0,False,49.0,248.6,43.2,458.0,119.3,Person_22 Surname_5,False
+0012_02,Mars,True,,PSO J318.5-22,35.0,False,0.0,0.0,0.0,0.0,0.0,Person_23 Surname_6,False
+0013_01,Europa,True,E/1761/P,PSO J318.5-22,23.0,False,0.0,0.0,0.0,0.0,0.0,Person_24 Surname_7,True
+0013_02,Earth,True,C/686/P,55 Cancri e,12.0,False,0.0,0.0,0.0,0.0,0.0,Person_25 Surname_8,True
+0014_01,Earth,,G/899/P,55 Cancri e,11.0,True,276.3,189.1,1.8,193.6,54.2,Person_26 Surname_9,False
+0014_02,Earth,False,G/840/S,55 Cancri e,31.0,False,345.5,314.9,34.0,160.1,194.0,Person_27 Surname_10,False
+0015_01,Earth,True,,55 Cancri e,51.0,,,0.0,0.0,0.0,0.0,Person_28 Surname_11,True
+0015_02,Europa,False,C/1918/P,55 Cancri e,31.0,False,38.5,23.0,1233.8,53.7,311.5,Person_29 Surname_12,False
+0016_01,Europa,True,F/1924/P,TRAPPIST-1e,27.0,False,0.0,0.0,0.0,0.0,0.0,Person_30 Surname_13,False
+0016_02,Mars,False,E/1503/S,TRAPPIST-1e,33.0,False,,58.8,279.5,15.4,198.4,Person_31 Surname_14,True
+0017_01,Earth,False,D/1006/P,TRAPPIST-1e,47.0,False,197.8,394.4,16.8,91.5,274.4,Person_32 Surname_15,False
+0017_02,Earth,False,D/1081/S,PSO J318.5-22,32.0,False,153.5,45.8,312.3,11.9,9.5,Person_33 Surname_16,False
+0018_01,Earth,True,A/1961/S,55 Cancri e,23.0,False,0.0,0.0,0.0,0.0,0.0,Person_34 Surname_0,True
+0018_02,Earth,False,C/569/S,55 Cancri e,44.0,False,142.0,454.6,443.4,308.0,190.1,Person_35 Surname_1,True
+0019_01,,False,E/693/S,55 Cancri e,35.0,False,180.5,26.8,450.2,21.5,59.5,Person_36 Surname_2,True
+0019_02,Earth,True,T/1793/P,PSO J318.5-22,51.0,False,0.0,0.0,0.0,0.0,0.0,Person_37 Surname_3,False
+0020_01,Earth,True,G/772/P,TRAPPIST-1e,32.0,False,0.0,0.0,0.0,0.0,0.0,Person_38 Surname_4,True
+0020_02,Europa,False,B/470/P,TRAPPIST-1e,12.0,False,84.5,103.2,164.8,62.7,38.0,Person_39 Surname_5,False
+0021_01,Earth,,F/1120/S,TRAPPIST-1e,10.0,False,22.5,98.4,87.3,140.9,119.4,Person_40 Surname_6,False
+0021_02,Mars,False,A/650/S,55 Cancri e,52.0,False,57.9,132.8,93.7,122.9,670.6,Person_41 Surname_7,False
+0022_01,Europa,True,F/1781/S,PSO J318.5-22,53.0,False,0.0,0.0,0.0,0.0,0.0,Person_42 Surname_8,True
+0022_02,Earth,False,C/1818/P,55 Cancri e,26.0,False,239.0,36.0,431.0,207.3,284.4,Person_43 Surname_9,False
+0023_01,Mars,False,D/612/P,55 Cancri e,24.0,False,114.8,621.4,233.9,457.7,494.8,Person_44 Surname_10,True
+0023_02,Mars,False,F/1059/P,PSO J318.5-22,49.0,False,120.0,480.2,50.3,37.7,118.6,Person_45 Surname_11,False
+0024_01,,False,D/1967/P,TRAPPIST-1e,14.0,False,,117.8,220.5,206.5,19.4,Person_46 Surname_12,False
+0024_02,Earth,True,G/1484/P,55 Cancri e,16.0,False,0.0,0.0,0.0,0.0,0.0,Person_47 Surname_13,False
+0025_01,Europa,True,E/431/S,55 Cancri e,38.0,False,0.0,0.0,0.0,0.0,0.0,Person_48 Surname_14,True
+0025_02,Earth,False,T/1181/P,55 Cancri e,23.0,False,191.6,869.6,38.7,828.9,117.4,Person_49 Surname_15,True
+0026_01,Earth,False,F/1239/S,PSO J318.5-22,29.0,False,128.0,433.5,236.8,108.2,162.2,Person_50 Surname_16,False
+0026_02,Earth,True,C/1306/P,TRAPPIST-1e,27.0,False,0.0,0.0,0.0,0.0,0.0,Person_51 Surname_0,True
+0027_01,Europa,True,G/50/P,PSO J318.5-22,34.0,False,0.0,0.0,0.0,0.0,0.0,Person_52 Surname_1,True
+0027_02,Europa,False,D/598/S,TRAPPIST-1e,49.0,False,429.0,219.1,276.0,39.3,213.2,Person_53 Surname_2,False
+0028_01,Europa,True,E/1709/S,55 Cancri e,30.0,False,0.0,0.0,0.0,0.0,0.0,Person_54 Surname_3,True
+0028_02,Europa,False,B/482/P,55 Cancri e,38.0,False,238.6,64.8,854.6,311.9,723.0,Person_55 Surname_4,False
+0029_01,Earth,False,A/599/P,PSO J318.5-22,0.0,False,29.6,64.2,131.8,19.1,261.0,Person_56 Surname_5,False
+0029_02,Europa,False,E/644/P,55 Cancri e,28.0,True,92.7,216.6,71.0,39.2,389.3,Person_57 Surname_6,False
+0030_01,Earth,False,B/354/S,TRAPPIST-1e,17.0,False,260.5,698.6,39.9,182.6,103.0,Person_58 Surname_7,False
+0030_02,Earth,False,T/310/P,TRAPPIST-1e,12.0,False,204.6,38.3,145.9,74.7,28.8,Person_59 Surname_8,True

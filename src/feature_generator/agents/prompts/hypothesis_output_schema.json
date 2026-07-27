@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "properties": {
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rationale": { "type": "string" },
+          "description": { "type": "string" },
+          "input_columns": { "type": "array", "items": { "type": "string" } },
+          "input_tables": { "type": "array", "items": { "type": "string" } },
+          "feature_type": {
+            "type": "string",
+            "enum": [
+              "aggregation",
+              "ratio",
+              "interaction",
+              "temporal",
+              "target_encoding",
+              "categorical_encoding",
+              "text",
+              "other"
+            ]
+          },
+          "requires_target_in_fit": { "type": "boolean" }
+        },
+        "required": [
+          "rationale",
+          "description",
+          "input_columns",
+          "input_tables",
+          "feature_type",
+          "requires_target_in_fit"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["hypotheses"],
+  "additionalProperties": false
+}

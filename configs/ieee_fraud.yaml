@@ -1,0 +1,52 @@
+# Kaggle "IEEE-CIS Fraud Detection" -- two tables joined on TransactionID,
+# genuine relative time via TransactionDT. Used to validate temporal
+# stability (CSI/PSI over time) and temporal-leakage detection.
+# https://www.kaggle.com/competitions/ieee-fraud-detection
+
+dataset:
+  name: ieee_fraud
+  tables:
+    - name: transaction
+      path: data/ieee_fraud/train_transaction.csv
+      role: primary
+      join_key: TransactionID
+    - name: identity
+      path: data/ieee_fraud/train_identity.csv
+      role: secondary
+      join_key: TransactionID
+  target_column: isFraud
+  target_table: transaction
+  id_columns: [TransactionID]
+  time_column: TransactionDT
+  known_leakage_columns: []
+
+stability:
+  method: temporal_oot
+  n_windows: 6
+  psi_bins: 10
+
+holdout:
+  enabled: true
+  fraction: 0.15
+  method: temporal
+
+budget:
+  max_wall_clock_minutes: 240
+  stalled_iterations_before_escalation: 4
+
+sandbox:
+  backend: docker
+  timeout_seconds: 120
+  memory_limit: 2g
+  cpus: 2.0
+
+cv_folds: 5
+random_seed: 42
+hypotheses_per_iteration: 15
+
+output:
+  run_dir: runs/ieee_fraud
+  knowledge_base_path: runs/ieee_fraud/knowledge_base.duckdb
+  results_store_path: runs/ieee_fraud/results_store.duckdb
+  feature_store_dir: runs/ieee_fraud/feature_store
+  checkpoint_sqlite_path: runs/ieee_fraud/checkpoints.sqlite
