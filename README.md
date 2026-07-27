@@ -10,9 +10,53 @@ results -- until an operator-set time/token budget runs out. Every feature
 tried (including rejects) is recorded in a knowledge base; only validated,
 metric-improving features are promoted to a separate results store.
 
-See `/Users/daniil/.claude/plans/rosy-honking-phoenix.md` for the full
-architecture writeup (also summarized in module docstrings throughout
-`src/feature_generator/`).
+## Architecture
+
+One pipeline run is a Python-level loop (`run_pipeline`) that invokes a LangGraph iteration graph
+once per iteration until the configured time/token budget is exhausted. `hypothesize` + `codegen`
+form a nested `feature_engineer` subgraph (the "two subagents of one common agent" the design
+calls for); the adversarial `leakage_review` gate is deliberately kept outside it. LLM-generated
+`fit`/`transform` calls always run inside Docker, batched into one container invocation per
+feature (not per fold or per replay-call) for throughput.
+
+```mermaid
+flowchart TD
+    START(["feature-gen run"]) --> INIT["build_dependencies\nprofile data · dev/holdout split (85/15) · raw baseline"]
+    INIT --> BUDGET{"budget remaining?\ntime AND tokens"}
+    BUDGET -- no --> STOP(["stop: budget_exhausted"])
+    BUDGET -- yes --> HYP["hypothesize\n1 LLM call -> N hypotheses"]
+
+    subgraph FE ["feature_engineer subgraph"]
+      HYP --> CODE["codegen xN\nparallel branches, retry on static-check failure"]
+    end
+
+    CODE --> LEAK["leakage_review\n1 batched LLM call (Opus), adversarial"]
+    LEAK --> SANDBOX["sandbox_execute\n1 batch container PER FEATURE (fit+transform across folds)"]
+    SANDBOX --> ASSEMBLE["assemble_dataset"]
+    ASSEMBLE --> SELECT["feature_selection\nlift screen -> redundancy clustering -> greedy search"]
+    SELECT --> TRAIN["train_model\nCatBoost CV + holdout fit + SHAP"]
+    TRAIN --> PARITY["serving_parity_check\n1 batch container PER FEATURE (was one per replay call)"]
+    PARITY --> STAB["stability_check\nCSI / PSI, decile stability"]
+    STAB --> KB[("update_knowledge_base\nDuckDB: everything, including rejects")]
+    KB --> PROMOTE{"AUC improved\nAND stable?"}
+    PROMOTE -- yes --> RESULTS[("results_store\nDuckDB: promoted only")]
+    PROMOTE --> BUDGET
+
+    RESULTS -.-> REPORT["feature-gen report\nHTML: train/CV/holdout, code, rationale"]
+    KB -.-> REPORT
+
+    classDef llmNode fill:#B8720E,stroke:#8a5608,color:#fff,font-weight:600;
+    classDef dockerNode fill:#1D5FA8,stroke:#123f70,color:#fff,font-weight:600;
+    classDef localNode fill:#0F7A5E,stroke:#0a5540,color:#fff;
+    classDef store fill:#eef1f3,stroke:#8a97a1,color:#151B23;
+    class HYP,CODE,LEAK llmNode;
+    class SANDBOX,PARITY dockerNode;
+    class SELECT,TRAIN,STAB,REPORT localNode;
+    class KB,RESULTS store;
+```
+
+Further detail is in each module's docstring under `src/feature_generator/` -- start with
+`orchestration/graph.py`, `sandbox/contract.py`, and `dataset/builder.py`.
 
 ## Prerequisites
 
