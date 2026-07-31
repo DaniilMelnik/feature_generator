@@ -5,8 +5,9 @@ import pandas as pd
 import pytest
 from click.testing import CliRunner
 
-from feature_generator.cli import build_dependencies, main, make_feature_computer_factory
-from feature_generator.config import DatasetConfig, RunConfig, TableConfig
+from feature_generator.agents.openai_compatible_client import OpenAICompatibleLLMClient
+from feature_generator.cli import build_dependencies, build_llm_client, llm_backend_summary, main, make_feature_computer_factory
+from feature_generator.config import DatasetConfig, LLMProviderConfig, RunConfig, TableConfig
 from feature_generator.sandbox.docker_runner import SandboxedFeatureComputer
 from feature_generator.schemas import FeatureSpec
 
@@ -91,6 +92,55 @@ dataset:
 
     assert result.exit_code != 0
     assert "Docker daemon is not reachable" in result.output
+
+
+def test_build_llm_client_returns_anthropic_client_by_default(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    monkeypatch.setattr("feature_generator.cli.LLMClient", lambda: "anthropic-client")
+
+    assert build_llm_client(config) == "anthropic-client"
+
+
+def test_build_llm_client_raises_clear_error_without_api_key_env(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    config.llm_provider = LLMProviderConfig(
+        backend="openai_compatible", base_url="https://api.groq.com/openai/v1", api_key_env="GROQ_API_KEY"
+    )
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    with pytest.raises(click.ClickException, match="GROQ_API_KEY"):
+        build_llm_client(config)
+
+
+def test_build_llm_client_constructs_openai_compatible_client_when_configured(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    config.llm_provider = LLMProviderConfig(
+        backend="openai_compatible", base_url="https://api.groq.com/openai/v1", api_key_env="GROQ_API_KEY"
+    )
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+
+    client = build_llm_client(config)
+
+    assert isinstance(client, OpenAICompatibleLLMClient)
+
+
+def test_llm_backend_summary_names_anthropic_tiers_by_default(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    summary = llm_backend_summary(config)
+    assert summary.startswith("anthropic:")
+    assert config.model_tiers.codegen.model in summary
+
+
+def test_llm_backend_summary_names_openai_compatible_backend(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config.llm_provider = LLMProviderConfig(
+        backend="openai_compatible", base_url="https://api.groq.com/openai/v1", api_key_env="GROQ_API_KEY"
+    )
+    config.model_tiers.codegen.model = "openai/gpt-oss-120b"
+
+    summary = llm_backend_summary(config)
+
+    assert summary == "openai_compatible:openai/gpt-oss-120b"
 
 
 def test_cli_help_lists_commands() -> None:

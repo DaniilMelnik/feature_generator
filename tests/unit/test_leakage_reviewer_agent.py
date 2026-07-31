@@ -10,7 +10,7 @@ class _FakeLLMClient:
         self.calls: list[dict] = []
 
     def call(self, tier, *, system_prompt, messages, output_schema=None, max_tokens=8000):
-        self.calls.append({"messages": messages, "system_prompt": system_prompt})
+        self.calls.append({"messages": messages, "system_prompt": system_prompt, "max_tokens": max_tokens})
         return LLMResponse(
             text="...", parsed=self.parsed, raw_content=[{"type": "text", "text": "..."}], stop_reason="end_turn"
         )
@@ -76,3 +76,12 @@ def test_adversarial_review_includes_rejected_patterns_and_source_in_prompt() ->
     assert "memoized globals are a common bug" in user_text
     assert "requires_target_in_fit: True" in user_text
     assert "FEATURE_NAME = 'x'" in user_text
+
+
+def test_adversarial_review_passes_max_output_tokens_from_tier() -> None:
+    fake = _FakeLLMClient(parsed={"verdicts": []})
+    tier = ModelTierEntry(model="openai/gpt-oss-120b", max_output_tokens=4000)
+
+    adversarial_review(fake, tier, messages=[], batch=[_pair("f1")])
+
+    assert fake.calls[0]["max_tokens"] == 4000

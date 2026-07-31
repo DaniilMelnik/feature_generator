@@ -3,12 +3,28 @@ from pathlib import Path
 import pytest
 import yaml
 
-from feature_generator.config import DatasetConfig, RunConfig, TableConfig, load_config
+from feature_generator.config import (
+    DatasetConfig,
+    LLMProviderConfig,
+    ModelTierEntry,
+    RunConfig,
+    TableConfig,
+    load_config,
+)
 
 CONFIGS_DIR = Path(__file__).resolve().parents[2] / "configs"
 
 
-@pytest.mark.parametrize("config_name", ["spaceship_titanic.yaml", "ieee_fraud.yaml"])
+@pytest.mark.parametrize(
+    "config_name",
+    [
+        "spaceship_titanic.yaml",
+        "ieee_fraud.yaml",
+        "spaceship_titanic_groq.yaml",
+        "spaceship_titanic_gemini.yaml",
+        "spaceship_titanic_ollama.yaml",
+    ],
+)
 def test_shipped_configs_load_and_round_trip(config_name: str) -> None:
     cfg = load_config(CONFIGS_DIR / config_name)
     assert isinstance(cfg, RunConfig)
@@ -70,3 +86,21 @@ def test_load_config_raises_on_missing_required_field(tmp_path: Path) -> None:
     bad_path.write_text(yaml.safe_dump({"dataset": {"name": "x"}}))
     with pytest.raises(Exception):
         load_config(bad_path)
+
+
+def test_llm_provider_defaults_to_anthropic() -> None:
+    cfg = load_config(CONFIGS_DIR / "spaceship_titanic.yaml")
+    assert cfg.llm_provider == LLMProviderConfig(backend="anthropic", base_url=None, api_key_env="GROQ_API_KEY")
+
+
+def test_model_tier_entry_max_output_tokens_defaults_to_32000() -> None:
+    assert ModelTierEntry(model="claude-sonnet-5").max_output_tokens == 32000
+
+
+def test_groq_config_selects_openai_compatible_backend() -> None:
+    cfg = load_config(CONFIGS_DIR / "spaceship_titanic_groq.yaml")
+    assert cfg.llm_provider.backend == "openai_compatible"
+    assert cfg.llm_provider.base_url == "https://api.groq.com/openai/v1"
+    assert cfg.llm_provider.api_key_env == "GROQ_API_KEY"
+    assert cfg.model_tiers.codegen.model == "openai/gpt-oss-120b"
+    assert cfg.model_tiers.codegen.max_output_tokens == 4000

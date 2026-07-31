@@ -14,6 +14,7 @@ from feature_generator.agents.llm_client import (
     COMPACTION_BETA,
     CONTEXT_EDITING_BETA,
     LLMClient,
+    LLMResponseError,
     build_request,
     estimate_tokens_heuristic,
 )
@@ -33,6 +34,22 @@ class FakeTextBlock:
 
 
 @dataclass
+class FakeParsedTextBlock:
+    """Mirrors the real SDK's ParsedTextBlock -- what a structured-output
+    response's text block actually model_dumps to (confirmed against a live
+    call): includes a `parsed_output` field the plain FakeTextBlock doesn't.
+    """
+
+    text: str
+    type: str = "text"
+    parsed_output: dict | None = None
+    citations: list | None = None
+
+    def model_dump(self) -> dict:
+        return {"type": self.type, "text": self.text, "parsed_output": self.parsed_output, "citations": self.citations}
+
+
+@dataclass
 class FakeUsage:
     input_tokens: int = 10
     output_tokens: int = 5
@@ -47,16 +64,39 @@ class FakeResponse:
     stop_reason: str = "end_turn"
 
 
+class FakeMessageStream:
+    """Stands in for the SDK's MessageStreamManager -- a context manager
+    whose __enter__ returns an object with get_final_message().
+    """
+
+    def __init__(self, response: FakeResponse) -> None:
+        self._response = response
+
+    def __enter__(self) -> "FakeMessageStream":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def get_final_message(self) -> FakeResponse:
+        return self._response
+
+
 class FakeMessagesResource:
     def __init__(self, response: FakeResponse | None = None, count_tokens_value: int = 100) -> None:
         self.response = response or FakeResponse(content=[FakeTextBlock('{"ok": true}')])
         self.count_tokens_value = count_tokens_value
         self.create_calls: list[dict] = []
+        self.stream_calls: list[dict] = []
         self.count_tokens_calls: list[dict] = []
 
     def create(self, **kwargs) -> FakeResponse:
         self.create_calls.append(kwargs)
         return self.response
+
+    def stream(self, **kwargs) -> FakeMessageStream:
+        self.stream_calls.append(kwargs)
+        return FakeMessageStream(self.response)
 
     def count_tokens(self, **kwargs) -> SimpleNamespace:
         self.count_tokens_calls.append(kwargs)
@@ -133,8 +173,8 @@ def test_call_uses_non_beta_path_when_no_compaction_or_context_editing() -> None
         output_schema={"type": "object"},
     )
 
-    assert len(fake.messages.create_calls) == 1
-    assert len(fake.beta.messages.create_calls) == 0
+    assert len(fake.messages.stream_calls) == 1
+    assert len(fake.beta.messages.stream_calls) == 0
     assert response.parsed == {"ok": True}
     assert response.text == '{"ok": true}'
     assert response.stop_reason == "end_turn"
@@ -147,8 +187,8 @@ def test_call_uses_non_beta_path_when_below_context_threshold() -> None:
 
     client.call(tier, system_prompt="S", messages=[{"role": "user", "content": "hi"}])
 
-    assert len(fake.messages.create_calls) == 1
-    assert len(fake.beta.messages.create_calls) == 0
+    assert len(fake.messages.stream_calls) == 1
+    assert len(fake.beta.messages.stream_calls) == 0
 
 
 def test_call_routes_through_compaction_beta_above_threshold() -> None:
@@ -158,8 +198,8 @@ def test_call_routes_through_compaction_beta_above_threshold() -> None:
 
     client.call(tier, system_prompt="S", messages=[{"role": "user", "content": "hi"}])
 
-    assert len(fake.beta.messages.create_calls) == 1
-    call = fake.beta.messages.create_calls[0]
+    assert len(fake.beta.messages.stream_calls) == 1
+    call = fake.beta.messages.stream_calls[0]
     assert call["betas"] == [COMPACTION_BETA]
     assert call["context_management"] == {"edits": [{"type": "compact_20260112"}]}
 
@@ -171,8 +211,8 @@ def test_call_routes_through_context_editing_beta_above_threshold() -> None:
 
     client.call(tier, system_prompt="S", messages=[{"role": "user", "content": "hi"}])
 
-    assert len(fake.beta.messages.create_calls) == 1
-    call = fake.beta.messages.create_calls[0]
+    assert len(fake.beta.messages.stream_calls) == 1
+    call = fake.beta.messages.stream_calls[0]
     assert call["betas"] == [CONTEXT_EDITING_BETA]
     assert call["context_management"]["edits"][0]["type"] == "clear_tool_uses_20250919"
 
@@ -186,7 +226,7 @@ def test_call_never_applies_both_compaction_and_context_editing() -> None:
 
     client.call(tier, system_prompt="S", messages=[{"role": "user", "content": "hi"}])
 
-    call = fake.beta.messages.create_calls[0]
+    call = fake.beta.messages.stream_calls[0]
     assert call["betas"] == [COMPACTION_BETA]
 
 
@@ -202,7 +242,7 @@ def test_count_tokens_falls_back_to_heuristic_on_error() -> None:
 
     # must not raise even though count_tokens() failed
     client.call(tier, system_prompt="S", messages=[{"role": "user", "content": "hi"}])
-    assert len(fake.beta.messages.create_calls) == 1  # heuristic count exceeded the tiny threshold
+    assert len(fake.beta.messages.stream_calls) == 1  # heuristic count exceeded the tiny threshold
 
 
 def test_response_usage_is_accumulated_across_calls() -> None:
@@ -227,6 +267,24 @@ def test_raw_content_preserves_full_blocks_for_replay() -> None:
     assert response.raw_content == [{"type": "text", "text": "hello world"}]
 
 
+def test_raw_content_strips_parsed_output_from_structured_response_blocks() -> None:
+    """Regression test: a structured-output call's text block is a
+    ParsedTextBlock with an extra `parsed_output` field (confirmed live).
+    Storing it verbatim in raw_content and replaying it as the next call's
+    assistant turn gets rejected by the API with a 400 "Extra inputs are not
+    permitted" -- parsed_output must never survive into raw_content.
+    """
+    fake = FakeAnthropicClient(
+        response=FakeResponse(content=[FakeParsedTextBlock('{"ok": true}', parsed_output={"ok": True})])
+    )
+    client = LLMClient(fake)
+
+    response = client.call(_tier(), system_prompt="S", messages=[], output_schema={"type": "object"})
+
+    assert "parsed_output" not in response.raw_content[0]
+    assert response.raw_content[0]["text"] == '{"ok": true}'
+
+
 def test_parsed_is_none_when_no_output_schema_requested() -> None:
     fake = FakeAnthropicClient(response=FakeResponse(content=[FakeTextBlock("plain text reply")]))
     client = LLMClient(fake)
@@ -235,3 +293,40 @@ def test_parsed_is_none_when_no_output_schema_requested() -> None:
 
     assert response.parsed is None
     assert response.text == "plain text reply"
+
+
+def test_call_raises_llm_response_error_when_structured_output_has_no_text(monkeypatch) -> None:
+    # e.g. the response was truncated by max_tokens before any text block was
+    # emitted -- must never silently surface as `response.parsed is None`
+    # (that crashes deep inside a caller with a confusing NoneType error).
+    fake = FakeAnthropicClient(response=FakeResponse(content=[], stop_reason="max_tokens"))
+    client = LLMClient(fake)
+
+    with pytest.raises(LLMResponseError) as exc_info:
+        client.call(_tier(), system_prompt="S", messages=[], output_schema={"type": "object"})
+
+    assert exc_info.value.stop_reason == "max_tokens"
+    assert "max_tokens" in str(exc_info.value)
+
+
+def test_call_raises_llm_response_error_on_malformed_json() -> None:
+    fake = FakeAnthropicClient(response=FakeResponse(content=[FakeTextBlock("not valid json{")]))
+    client = LLMClient(fake)
+
+    with pytest.raises(LLMResponseError):
+        client.call(_tier(), system_prompt="S", messages=[], output_schema={"type": "object"})
+
+
+def test_usage_is_still_recorded_when_structured_output_parsing_fails() -> None:
+    # the API call consumed real tokens/cost regardless of whether the
+    # response was usable -- the budget tracker must still see it.
+    fake = FakeAnthropicClient(
+        response=FakeResponse(content=[], stop_reason="max_tokens", usage=FakeUsage(input_tokens=50, output_tokens=30))
+    )
+    client = LLMClient(fake)
+
+    with pytest.raises(LLMResponseError):
+        client.call(_tier(), system_prompt="S", messages=[], output_schema={"type": "object"})
+
+    assert client.total_usage.input_tokens == 50
+    assert client.total_usage.output_tokens == 30

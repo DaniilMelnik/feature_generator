@@ -1,0 +1,63 @@
+# Same dataset/budget/holdout as configs/spaceship_titanic.yaml, but driven by a
+# free-tier model (Groq, OpenAI-compatible API) instead of the paid Claude API --
+# for comparing feature/model quality against a Claude run on identical settings.
+#
+# Requires GROQ_API_KEY in .env (sign up at https://console.groq.com).
+#
+# Note: Groq's free tier for openai/gpt-oss-120b is 30 RPM / 1K RPD / 8K TPM --
+# expect noticeably fewer iterations in the same wall-clock budget than the
+# Claude run; max_output_tokens below is cut down from the Anthropic default
+# (32000) to fit that TPM ceiling.
+
+dataset:
+  name: spaceship_titanic
+  tables:
+    - name: passengers
+      path: data/spaceship_titanic/train.csv
+      role: primary
+  target_column: Transported
+  target_table: passengers
+  id_columns: [PassengerId]
+  time_column: null
+  known_leakage_columns: [Name]
+
+llm_provider:
+  backend: openai_compatible
+  base_url: https://api.groq.com/openai/v1
+  api_key_env: GROQ_API_KEY
+
+model_tiers:
+  hypothesis: {model: openai/gpt-oss-120b, max_output_tokens: 4000}
+  codegen: {model: openai/gpt-oss-120b, max_output_tokens: 4000}
+  leakage_reviewer: {model: openai/gpt-oss-120b, max_output_tokens: 4000}
+
+stability:
+  method: bootstrap_resampling
+  bootstrap_iterations: 30
+
+holdout:
+  enabled: true
+  fraction: 0.15
+  method: random_stratified
+
+budget:
+  max_wall_clock_minutes: 60
+  max_total_tokens: 500000
+  stalled_iterations_before_escalation: 3
+
+sandbox:
+  backend: docker
+  timeout_seconds: 60
+  memory_limit: 1g
+  cpus: 1.0
+
+cv_folds: 5
+random_seed: 42
+hypotheses_per_iteration: 15
+
+output:
+  run_dir: runs/spaceship_titanic_groq
+  knowledge_base_path: runs/spaceship_titanic_groq/knowledge_base.duckdb
+  results_store_path: runs/spaceship_titanic_groq/results_store.duckdb
+  feature_store_dir: runs/spaceship_titanic_groq/feature_store
+  checkpoint_sqlite_path: runs/spaceship_titanic_groq/checkpoints.sqlite

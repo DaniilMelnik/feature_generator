@@ -13,7 +13,10 @@ class _FakeLLMClient:
 
     def call(self, tier, *, system_prompt, messages, output_schema=None, max_tokens=8000):
         self.calls.append(
-            {"tier": tier, "system_prompt": system_prompt, "messages": messages, "output_schema": output_schema}
+            {
+                "tier": tier, "system_prompt": system_prompt, "messages": messages,
+                "output_schema": output_schema, "max_tokens": max_tokens,
+            }
         )
         return LLMResponse(
             text="...", parsed=self.parsed, raw_content=[{"type": "text", "text": "..."}], stop_reason="end_turn"
@@ -107,3 +110,15 @@ def test_propose_hypotheses_passes_output_schema_and_system_prompt() -> None:
     call = fake.calls[0]
     assert call["output_schema"]["required"] == ["hypotheses"]
     assert "Data Analyst" in call["system_prompt"]
+
+
+def test_propose_hypotheses_passes_max_output_tokens_from_tier() -> None:
+    fake = _FakeLLMClient(parsed={"hypotheses": []})
+    tier = ModelTierEntry(model="openai/gpt-oss-120b", max_output_tokens=4000)
+
+    propose_hypotheses(
+        fake, tier, messages=[], data_profile=_profile(), kb_excerpt="x", feature_selection_summary="y",
+        iteration=0, iterations_since_improvement=0, hypotheses_per_iteration=3,
+    )
+
+    assert fake.calls[0]["max_tokens"] == 4000

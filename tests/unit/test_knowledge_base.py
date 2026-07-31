@@ -248,6 +248,26 @@ def test_get_run_metadata_returns_none_when_missing() -> None:
     kb.close()
 
 
+def test_run_metadata_records_llm_backend(tmp_path: Path) -> None:
+    kb = KnowledgeBase(tmp_path / "kb.duckdb")
+    kb.set_run_metadata(
+        "run-1", dataset_name="spaceship_titanic", baseline_auc=0.88, raw_feature_columns=["Age"],
+        llm_backend="openai_compatible:openai/gpt-oss-120b",
+    )
+
+    metadata = kb.get_run_metadata("run-1")
+    assert metadata["llm_backend"] == "openai_compatible:openai/gpt-oss-120b"
+    kb.close()
+
+
+def test_run_metadata_llm_backend_defaults_to_none(tmp_path: Path) -> None:
+    kb = KnowledgeBase(tmp_path / "kb.duckdb")
+    kb.set_run_metadata("run-1", dataset_name="ds", baseline_auc=0.5, raw_feature_columns=["a"])
+
+    assert kb.get_run_metadata("run-1")["llm_backend"] is None
+    kb.close()
+
+
 def test_get_best_training_metrics_returns_highest_auc(tmp_path: Path) -> None:
     kb = KnowledgeBase(tmp_path / "kb.duckdb")
     low = TrainingMetrics(

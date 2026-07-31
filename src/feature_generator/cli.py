@@ -7,6 +7,7 @@ and drives ``run_pipeline`` until the configured budget is exhausted.
 
 from __future__ import annotations
 
+import os
 import uuid
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from feature_generator.agents.llm_client import LLMClient
+from feature_generator.agents.openai_compatible_client import OpenAICompatibleLLMClient
 from feature_generator.config import RunConfig, load_config
 from feature_generator.dataset.builder import DatasetBuilder, build_raw_feature_frame
 from feature_generator.dataset.feature_store import FeatureStore
@@ -56,6 +58,40 @@ def make_feature_computer_factory(config: RunConfig):
     return factory
 
 
+def build_llm_client(config: RunConfig) -> LLMClient | OpenAICompatibleLLMClient:
+    provider = config.llm_provider
+    if provider.backend == "anthropic":
+        return LLMClient()
+    if provider.backend == "openai_compatible":
+        if not provider.base_url:
+            raise click.ClickException(
+                "llm_provider.backend is 'openai_compatible' but llm_provider.base_url is not set."
+            )
+        api_key = os.environ.get(provider.api_key_env)
+        if not api_key:
+            raise click.ClickException(
+                f"llm_provider.backend is 'openai_compatible' but the '{provider.api_key_env}' "
+                "environment variable is not set. Add it to .env."
+            )
+        return OpenAICompatibleLLMClient(base_url=provider.base_url, api_key=api_key)
+    raise click.ClickException(f"Unknown llm_provider.backend: {provider.backend!r}")
+
+
+def llm_backend_summary(config: RunConfig) -> str:
+    """Short, human-readable record of which backend/models produced a run --
+    stored in run_metadata so runs made with different backends (e.g. the
+    Anthropic-backed default vs. a free/local openai_compatible run) stay
+    distinguishable when browsing the knowledge base later."""
+    provider = config.llm_provider
+    if provider.backend == "anthropic":
+        tiers = config.model_tiers
+        return (
+            f"anthropic:hypothesis={tiers.hypothesis.model},codegen={tiers.codegen.model},"
+            f"leakage_reviewer={tiers.leakage_reviewer.model}"
+        )
+    return f"{provider.backend}:{config.model_tiers.codegen.model}"
+
+
 def build_dependencies(config: RunConfig) -> GraphDependencies:
     if config.sandbox.backend == "docker" and not docker_available():
         raise click.ClickException(
@@ -76,7 +112,7 @@ def build_dependencies(config: RunConfig) -> GraphDependencies:
     results_store = ResultsStore(config.output.results_store_path)
     feature_store = FeatureStore(config.output.feature_store_dir)
     dataset_builder = DatasetBuilder(cv_folds=config.cv_folds, random_seed=config.random_seed)
-    llm_client = LLMClient()
+    llm_client = build_llm_client(config)
 
     if config.holdout.enabled:
         time_values = base_df[config.dataset.time_column] if config.holdout.method == "temporal" else None
@@ -147,6 +183,7 @@ def run(config_path: str, run_id: str | None) -> None:
         dataset_name=config.dataset.name,
         baseline_auc=baseline_auc,
         raw_feature_columns=list(deps.raw_feature_frame.columns),
+        llm_backend=llm_backend_summary(config),
     )
     if config.budget.max_wall_clock_minutes:
         click.echo(f"Time budget: {config.budget.max_wall_clock_minutes} minute(s)")

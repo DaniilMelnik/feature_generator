@@ -14,7 +14,10 @@ class _FakeLLMClient:
 
     def call(self, tier, *, system_prompt, messages, output_schema=None, max_tokens=8000):
         self.calls.append(
-            {"tier": tier, "system_prompt": system_prompt, "messages": messages, "output_schema": output_schema}
+            {
+                "tier": tier, "system_prompt": system_prompt, "messages": messages,
+                "output_schema": output_schema, "max_tokens": max_tokens,
+            }
         )
         return LLMResponse(
             text="...", parsed=self.parsed, raw_content=[{"type": "text", "text": "..."}], stop_reason="end_turn"
@@ -90,3 +93,16 @@ def test_generate_feature_module_increments_attempt_and_carries_feedback() -> No
     assert spec.codegen_attempt == 1
     last_user_message = fake.calls[0]["messages"][-1]
     assert "denied import 'os'" in last_user_message["content"]
+
+
+def test_generate_feature_module_passes_max_output_tokens_from_tier() -> None:
+    fake = _FakeLLMClient(
+        parsed={"feature_name": "age_bucket", "source_code": "x", "output_dtype": "float64"}
+    )
+    tier = ModelTierEntry(model="openai/gpt-oss-120b", max_output_tokens=4000)
+
+    generate_feature_module(
+        fake, tier, messages=[], hypothesis=_hypothesis(), data_profile=_profile(), attempt=0
+    )
+
+    assert fake.calls[0]["max_tokens"] == 4000

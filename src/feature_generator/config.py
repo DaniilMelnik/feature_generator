@@ -29,6 +29,11 @@ class ModelTierEntry(BaseModel):
     # iterations (see BudgetConfig.stalled_iterations_before_escalation).
     escalate_to_model: str | None = None
     escalate_to_effort: Effort | None = None
+    # Response-length cap passed explicitly to LLMClient.call() by every agent
+    # (was previously an implicit client-side default) -- lets a non-Anthropic
+    # backend with a tight tokens-per-minute rate limit (e.g. a free tier) use
+    # a much smaller cap than Anthropic's generous default.
+    max_output_tokens: int = 32000
 
     def escalated(self) -> "ModelTierEntry":
         """Returns a new tier with the escalation-ladder overrides applied
@@ -65,6 +70,20 @@ class ModelTiersConfig(BaseModel):
         effort="low",
         thinking="disabled",
     )
+
+
+class LLMProviderConfig(BaseModel):
+    """Which LLM backend build_dependencies() should construct. "anthropic" (default)
+    keeps today's behavior unchanged. "openai_compatible" talks to any server exposing
+    an OpenAI-compatible /chat/completions endpoint (Groq, a local Ollama/vLLM server,
+    etc.) -- see agents/openai_compatible_client.py for the translation layer that lets
+    the same hypothesize/codegen/leakage_review agent code run against either backend
+    unmodified.
+    """
+
+    backend: Literal["anthropic", "openai_compatible"] = "anthropic"
+    base_url: str | None = None  # required when backend == "openai_compatible"
+    api_key_env: str = "GROQ_API_KEY"
 
 
 class RetryConfig(BaseModel):
@@ -158,6 +177,7 @@ class OutputConfig(BaseModel):
 
 class RunConfig(BaseModel):
     dataset: DatasetConfig
+    llm_provider: LLMProviderConfig = LLMProviderConfig()
     model_tiers: ModelTiersConfig = ModelTiersConfig()
     retries: RetryConfig = RetryConfig()
     sandbox: SandboxConfig = SandboxConfig()

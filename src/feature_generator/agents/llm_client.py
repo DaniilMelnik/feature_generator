@@ -26,7 +26,7 @@ CONTEXT_EDITING_BETA = "context-management-2025-06-27"
 # API's own ~150K default compaction trigger.
 DEFAULT_CONTEXT_TOKEN_THRESHOLD = 100_000
 
-DEFAULT_MAX_TOKENS = 8000
+DEFAULT_MAX_TOKENS = 32000
 CACHE_TTL = "1h"  # sandbox execution + CatBoost training between turns can run
 # minutes-to-tens-of-minutes; the default 5-minute ephemeral TTL would
 # cold-miss on almost every turn.
@@ -44,6 +44,22 @@ class LLMUsage:
         self.output_tokens += getattr(usage, "output_tokens", 0) or 0
         self.cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
         self.cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
+
+
+class LLMResponseError(Exception):
+    """Raised when a structured-output call didn't return parseable JSON --
+    e.g. the response was truncated (``stop_reason == "max_tokens"``) before
+    any text block was emitted, or the model returned malformed JSON despite
+    the schema constraint. Callers in the codegen retry loops
+    (``orchestration.graph``) catch this and treat it exactly like a
+    static-check violation: consume a retry attempt with the error as
+    feedback, or give up gracefully once retries are exhausted -- never let
+    one bad response crash the whole run.
+    """
+
+    def __init__(self, message: str, stop_reason: str) -> None:
+        super().__init__(message)
+        self.stop_reason = stop_reason
 
 
 @dataclass
@@ -92,12 +108,26 @@ def estimate_tokens_heuristic(messages: list[dict]) -> int:
     return sum(len(json.dumps(m)) for m in messages) // 4
 
 
+# SDK-only convenience fields that show up in .model_dump() but aren't valid
+# on the wire when a block is replayed back as conversation history -- e.g.
+# `parsed_output` on ParsedTextBlock (populated when structured outputs are
+# requested; confirmed live: the API rejects it on the next call with
+# "Extra inputs are not permitted" if echoed back verbatim as an assistant
+# turn's content, since it's a client-side-only field, not part of the
+# actual message schema).
+_NON_REPLAYABLE_BLOCK_FIELDS = ("parsed_output",)
+
+
 def _block_to_dict(block: Any) -> dict:
     if isinstance(block, dict):
-        return block
-    if hasattr(block, "model_dump"):
-        return block.model_dump()
-    return dict(block)
+        data = dict(block)
+    elif hasattr(block, "model_dump"):
+        data = block.model_dump()
+    else:
+        data = dict(block)
+    for field_name in _NON_REPLAYABLE_BLOCK_FIELDS:
+        data.pop(field_name, None)
+    return data
 
 
 class LLMClient:
@@ -150,32 +180,57 @@ class LLMClient:
             max_tokens=max_tokens,
         )
 
+        # Streamed, not a plain .create() -- the SDK itself refuses a
+        # non-streaming call whenever it estimates (from max_tokens/effort)
+        # that the response could take longer than 10 minutes, which
+        # high-effort/high-max_tokens roles (codegen at xhigh, hypothesize
+        # generating many hypotheses) legitimately can. get_final_message()
+        # blocks until the stream completes and returns the same Message
+        # shape .create() would, so _to_llm_response needs no changes.
         beta_reqs = self._beta_requirements(tier, system_prompt, messages)
         if beta_reqs is not None:
             betas, context_management = beta_reqs
-            response = self.client.beta.messages.create(
+            with self.client.beta.messages.stream(
                 **request, betas=betas, context_management=context_management
-            )
+            ) as stream:
+                response = stream.get_final_message()
         else:
-            response = self.client.messages.create(**request)
+            with self.client.messages.stream(**request) as stream:
+                response = stream.get_final_message()
 
         return self._to_llm_response(response, output_schema)
 
     def _to_llm_response(self, response: Any, output_schema: dict | None) -> LLMResponse:
         usage = LLMUsage()
         usage.add(response.usage)
+        # usage is recorded even on a parse failure below -- the call still
+        # consumed real tokens/cost regardless of whether the response was
+        # usable, and the budget tracker must still count it.
         self.total_usage.add(response.usage)
 
         text = "".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         )
-        parsed = json.loads(text) if (output_schema is not None and text) else None
+        stop_reason = getattr(response, "stop_reason", "end_turn")
         raw_content = [_block_to_dict(block) for block in response.content]
 
+        parsed = None
+        if output_schema is not None:
+            if not text:
+                raise LLMResponseError(
+                    f"expected structured JSON output but got no text content "
+                    f"(stop_reason={stop_reason!r} -- a truncated response due to max_tokens is "
+                    "the most common cause)",
+                    stop_reason,
+                )
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise LLMResponseError(
+                    f"structured output was not valid JSON (stop_reason={stop_reason!r}): {exc}",
+                    stop_reason,
+                ) from exc
+
         return LLMResponse(
-            text=text,
-            parsed=parsed,
-            raw_content=raw_content,
-            usage=usage,
-            stop_reason=getattr(response, "stop_reason", "end_turn"),
+            text=text, parsed=parsed, raw_content=raw_content, usage=usage, stop_reason=stop_reason,
         )

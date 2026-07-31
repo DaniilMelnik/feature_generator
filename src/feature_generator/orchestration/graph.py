@@ -164,18 +164,44 @@ class GraphDependencies:
             self.raw_feature_frame = self.raw_feature_frame.reindex(self.base_df.index)
 
 
+def _failed_codegen_placeholder(
+    deps: GraphDependencies, hypothesis: FeatureHypothesis, attempt: int, error: str
+) -> tuple[FeatureSpec, StaticCheckResult]:
+    """A synthetic spec + failing StaticCheckResult -- lets a codegen call
+    that raised (LLMResponseError from a truncated/malformed response, or
+    any other transient failure) be treated exactly like a genuine static-
+    check violation by the existing retry/give-up routing, instead of
+    crashing the whole iteration.
+    """
+    placeholder = FeatureSpec(
+        hypothesis_id=hypothesis.id,
+        feature_name=f"codegen_failed_{hypothesis.id}",
+        module_source="",
+        declared_input_columns=hypothesis.input_columns,
+        declared_input_tables=hypothesis.input_tables,
+        output_dtype="float64",
+        codegen_model=deps.codegen_tier.model,
+        codegen_attempt=attempt,
+    )
+    return placeholder, StaticCheckResult(passed=False, violations=[f"codegen call failed: {error}"])
+
+
 def _regenerate_with_feedback(
     deps: GraphDependencies, hypothesis: FeatureHypothesis, attempt: int, feedback: str
 ) -> tuple[FeatureSpec, StaticCheckResult]:
-    new_spec, _, _ = deps.codegen_fn(
-        deps.llm_client,
-        deps.codegen_tier,
-        messages=[],
-        hypothesis=hypothesis,
-        data_profile=deps.data_profile,
-        attempt=attempt,
-        feedback=feedback,
-    )
+    try:
+        new_spec, _, _ = deps.codegen_fn(
+            deps.llm_client,
+            deps.codegen_tier,
+            messages=[],
+            hypothesis=hypothesis,
+            data_profile=deps.data_profile,
+            attempt=attempt,
+            feedback=feedback,
+        )
+    except Exception as exc:  # noqa: BLE001 -- any codegen-call failure (LLMResponseError or otherwise), never crash the run
+        return _failed_codegen_placeholder(deps, hypothesis, attempt, str(exc))
+
     static_result = run_static_checks(
         new_spec.module_source,
         forbidden_target_column=deps.run_config.dataset.target_column,
@@ -263,24 +289,43 @@ def build_codegen_branch_subgraph(deps: GraphDependencies) -> CompiledStateGraph
 
     def codegen_node(state: CodegenBranchState) -> dict:
         hypothesis = FeatureHypothesis.model_validate(state["hypothesis"])
-        spec, messages, _response = deps.codegen_fn(
-            deps.llm_client,
-            deps.codegen_tier,
-            messages=state.get("messages", []),
-            hypothesis=hypothesis,
-            data_profile=deps.data_profile,
-            attempt=state.get("attempt", 0),
-            feedback=state.get("feedback"),
-        )
+        attempt = state.get("attempt", 0)
+        try:
+            spec, messages, _response = deps.codegen_fn(
+                deps.llm_client,
+                deps.codegen_tier,
+                messages=state.get("messages", []),
+                hypothesis=hypothesis,
+                data_profile=deps.data_profile,
+                attempt=attempt,
+                feedback=state.get("feedback"),
+            )
+        except Exception as exc:  # noqa: BLE001 -- any codegen-call failure, routed through the
+            # existing static-check retry/give-up machinery below instead of crashing the run
+            spec, static_result = _failed_codegen_placeholder(deps, hypothesis, attempt, str(exc))
+            return {
+                "hypothesis": state["hypothesis"],
+                "attempt": attempt,
+                "messages": state.get("messages", []),
+                "current_spec": spec.model_dump(),
+                "current_static_result": static_result.model_dump(),
+            }
         return {
             "hypothesis": state["hypothesis"],
-            "attempt": state.get("attempt", 0),
+            "attempt": attempt,
             "messages": messages,
             "current_spec": spec.model_dump(),
         }
 
     def static_review_node(state: CodegenBranchState) -> dict:
         spec = state["current_spec"]
+        if not spec["module_source"]:
+            # codegen_node already produced a failing static_result for this
+            # branch (the codegen call itself raised, e.g. LLMResponseError)
+            # -- nothing to statically check on an empty module; pass that
+            # result through rather than overwriting it with a fresh (and
+            # trivially-passing, since an empty AST has nothing to deny) one.
+            return {"current_static_result": state["current_static_result"]}
         hypothesis = FeatureHypothesis.model_validate(state["hypothesis"])
         result = run_static_checks(
             spec["module_source"],

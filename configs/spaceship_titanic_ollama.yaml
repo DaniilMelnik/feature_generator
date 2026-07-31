@@ -1,0 +1,69 @@
+# Same dataset/budget/holdout as configs/spaceship_titanic.yaml, but driven by a
+# fully local model (Ollama, OpenAI-compatible local server) instead of the paid
+# Claude API -- for comparing feature/model quality against a Claude run on
+# identical settings, with zero external account/region/rate-limit dependency.
+#
+# Prereqs (already done for this run): `brew install ollama`, `brew services
+# start ollama`, `ollama pull qwen2.5-coder:14b`. No API key needed -- Ollama's
+# OpenAI-compatible server doesn't check the key value, but the SDK requires a
+# non-empty string, hence the placeholder OLLAMA_API_KEY below.
+#
+# Note: qwen2.5-coder:14b is a ~9GB (Q4) local model -- much weaker than Claude
+# at following a strict fit/transform contract and JSON schema, and inference
+# is CPU/GPU-bound on this machine (24GB RAM, Apple M4) rather than a cloud
+# rate limit. Expect noticeably fewer iterations and likely much lower quality
+# per iteration than the Claude/hosted runs -- that's the honest comparison
+# point for a fully local, free setup.
+
+dataset:
+  name: spaceship_titanic
+  tables:
+    - name: passengers
+      path: data/spaceship_titanic/train.csv
+      role: primary
+  target_column: Transported
+  target_table: passengers
+  id_columns: [PassengerId]
+  time_column: null
+  known_leakage_columns: [Name]
+
+llm_provider:
+  backend: openai_compatible
+  base_url: http://localhost:11434/v1
+  api_key_env: OLLAMA_API_KEY
+
+model_tiers:
+  hypothesis: {model: qwen2.5-coder:14b, max_output_tokens: 4000}
+  codegen: {model: qwen2.5-coder:14b, max_output_tokens: 4000}
+  leakage_reviewer: {model: qwen2.5-coder:14b, max_output_tokens: 4000}
+
+stability:
+  method: bootstrap_resampling
+  bootstrap_iterations: 30
+
+holdout:
+  enabled: true
+  fraction: 0.15
+  method: random_stratified
+
+budget:
+  max_wall_clock_minutes: 60
+  max_total_tokens: 500000
+  stalled_iterations_before_escalation: 3
+
+sandbox:
+  backend: docker
+  timeout_seconds: 60
+  memory_limit: 1g
+  cpus: 1.0
+
+cv_folds: 5
+random_seed: 42
+hypotheses_per_iteration: 15
+
+output:
+  run_dir: runs/spaceship_titanic_ollama
+  knowledge_base_path: runs/spaceship_titanic_ollama/knowledge_base.duckdb
+  results_store_path: runs/spaceship_titanic_ollama/results_store.duckdb
+  feature_store_dir: runs/spaceship_titanic_ollama/feature_store
+  checkpoint_sqlite_path: runs/spaceship_titanic_ollama/checkpoints.sqlite

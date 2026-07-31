@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from feature_generator.agents.llm_client import LLMResponse, LLMUsage
+from feature_generator.agents.llm_client import LLMResponse, LLMResponseError, LLMUsage
 from feature_generator.config import (
     BudgetConfig,
     DatasetConfig,
@@ -152,6 +152,33 @@ class ScriptedCodegen:
         self.calls += 1
         spec = FeatureSpec(
             hypothesis_id=hypothesis.id, feature_name=self.feature_name, module_source=self.source,
+            declared_input_columns=hypothesis.input_columns, declared_input_tables=hypothesis.input_tables,
+            output_dtype="float64", codegen_model="stub", codegen_attempt=attempt,
+        )
+        return spec, [*messages, {"role": "assistant", "content": "ok"}], _make_llm_response({})
+
+
+class ScriptedFailingCodegen:
+    """Stub that raises -- e.g. a truncated/malformed structured output
+    (LLMResponseError) -- simulating a real failure mode observed in
+    production (see llm_client.LLMResponseError). Must be routed through the
+    same retry/give-up machinery as a static-check violation, never crash
+    the iteration. `fail_after` successful calls succeed first (e.g. to let
+    an initial codegen succeed and only the leakage-review revision retry
+    fail), defaulting to 0 (always fails).
+    """
+
+    def __init__(self, fail_after: int = 0, feature_name: str = "flaky") -> None:
+        self.fail_after = fail_after
+        self.feature_name = feature_name
+        self.calls = 0
+
+    def __call__(self, llm_client, tier, *, messages, hypothesis, data_profile, attempt, feedback=None):
+        self.calls += 1
+        if self.calls > self.fail_after:
+            raise LLMResponseError("expected structured JSON output but got no text content", "max_tokens")
+        spec = FeatureSpec(
+            hypothesis_id=hypothesis.id, feature_name=self.feature_name, module_source=COMPLIANT_SOURCE,
             declared_input_columns=hypothesis.input_columns, declared_input_tables=hypothesis.input_tables,
             output_dtype="float64", codegen_model="stub", codegen_attempt=attempt,
         )
@@ -320,6 +347,32 @@ def test_codegen_retry_bounded_and_ends_static_failed(deps) -> None:
     assert not deps.feature_store.exists("run-2", "malicious")
 
 
+def test_codegen_llm_failure_is_retried_not_crashed(deps) -> None:
+    """Regression test: a codegen call that raises LLMResponseError (e.g. a
+    truncated max_tokens response) must be retried like a static-check
+    violation and give up gracefully once retries are exhausted -- not
+    propagate and crash the whole run (this happened for real in production
+    with hypotheses_per_iteration=15: a revision-retry codegen call was
+    truncated and the resulting TypeError killed an in-progress run).
+    """
+    deps.run_config = _run_config(max_codegen_retries=2)
+    deps.codegen_fn = ScriptedFailingCodegen()
+
+    graph = build_iteration_graph(deps)
+    initial_state = {
+        "run_id": "run-flaky", "iteration": 0, "kb_excerpt": "none", "feature_selection_summary": "",
+        "hypotheses_per_iteration": 1, "iterations_since_improvement": 0, "escalation_tier": "base",
+        "hypothesis_agent_messages": [], "accepted_feature_names": [], "best_metric_so_far": float("-inf"),
+    }
+
+    result = graph.invoke(initial_state, config={"configurable": {"thread_id": "t-flaky"}})
+
+    assert deps.codegen_fn.calls == 3  # 1 initial attempt + 2 retries, never crashes
+    statuses = [r["final_status"] for r in result["current_validation_results"]]
+    assert statuses == ["static_failed"]
+    assert result["newly_validated_feature_names"] == []
+
+
 def test_leakage_review_reject_prevents_sandbox_execution(deps) -> None:
     deps.leakage_review_fn = ScriptedLeakageReview("reject")
 
@@ -355,6 +408,31 @@ def test_leakage_review_needs_revision_retries_bounded(deps) -> None:
     assert deps.leakage_review_fn.calls == 2
     statuses = [r["final_status"] for r in result["current_validation_results"]]
     assert "leakage_rejected" in statuses
+    assert result["newly_validated_feature_names"] == []
+
+
+def test_leakage_revision_retry_codegen_failure_is_handled_not_crashed(deps) -> None:
+    """Regression test for the exact production crash: leakage_review's
+    revision-retry path calls `_regenerate_with_feedback`, which calls
+    `codegen_fn` with a fresh, empty `messages=[]` list every time (unlike
+    the codegen_branch subgraph's own retry loop) -- a separate code path
+    that needs its own coverage for the same LLMResponseError resilience.
+    """
+    deps.run_config = _run_config(max_leakage_revision_retries=1)
+    deps.leakage_review_fn = ScriptedLeakageReview("needs_revision")
+    deps.codegen_fn = ScriptedFailingCodegen(fail_after=1)  # initial codegen succeeds, revision retries fail
+
+    graph = build_iteration_graph(deps)
+    initial_state = {
+        "run_id": "run-flaky-revision", "iteration": 0, "kb_excerpt": "none", "feature_selection_summary": "",
+        "hypotheses_per_iteration": 1, "iterations_since_improvement": 0, "escalation_tier": "base",
+        "hypothesis_agent_messages": [], "accepted_feature_names": [], "best_metric_so_far": float("-inf"),
+    }
+
+    result = graph.invoke(initial_state, config={"configurable": {"thread_id": "t-flaky-revision"}})
+
+    statuses = [r["final_status"] for r in result["current_validation_results"]]
+    assert "static_failed" in statuses  # the failed regeneration attempt, not a crash
     assert result["newly_validated_feature_names"] == []
 
 

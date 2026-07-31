@@ -103,6 +103,7 @@ _SCHEMA_STATEMENTS = [
         dataset_name VARCHAR NOT NULL,
         baseline_auc DOUBLE,
         raw_feature_columns VARCHAR NOT NULL,
+        llm_backend VARCHAR,
         started_at TIMESTAMP DEFAULT current_timestamp
     )
     """,
@@ -203,12 +204,18 @@ class KnowledgeBase:
         )
 
     def set_run_metadata(
-        self, run_id: str, dataset_name: str, baseline_auc: float | None, raw_feature_columns: list[str]
+        self,
+        run_id: str,
+        dataset_name: str,
+        baseline_auc: float | None,
+        raw_feature_columns: list[str],
+        llm_backend: str | None = None,
     ) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO run_metadata (run_id, dataset_name, baseline_auc, raw_feature_columns) "
-            "VALUES (?, ?, ?, ?)",
-            [run_id, dataset_name, baseline_auc, json.dumps(raw_feature_columns)],
+            "INSERT OR REPLACE INTO run_metadata "
+            "(run_id, dataset_name, baseline_auc, raw_feature_columns, llm_backend) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [run_id, dataset_name, baseline_auc, json.dumps(raw_feature_columns), llm_backend],
         )
 
     # --- reads -----------------------------------------------------------
@@ -282,17 +289,18 @@ class KnowledgeBase:
 
     def get_run_metadata(self, run_id: str) -> dict | None:
         row = self._conn.execute(
-            "SELECT dataset_name, baseline_auc, raw_feature_columns, started_at "
+            "SELECT dataset_name, baseline_auc, raw_feature_columns, llm_backend, started_at "
             "FROM run_metadata WHERE run_id = ?",
             [run_id],
         ).fetchone()
         if row is None:
             return None
-        dataset_name, baseline_auc, raw_feature_columns, started_at = row
+        dataset_name, baseline_auc, raw_feature_columns, llm_backend, started_at = row
         return {
             "dataset_name": dataset_name,
             "baseline_auc": baseline_auc,
             "raw_feature_columns": json.loads(raw_feature_columns),
+            "llm_backend": llm_backend,
             "started_at": started_at,
         }
 

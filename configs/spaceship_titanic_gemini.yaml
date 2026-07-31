@@ -1,0 +1,69 @@
+# Same dataset/budget/holdout as configs/spaceship_titanic.yaml, but driven by a
+# free-tier model (Google Gemini via its OpenAI-compatible API) instead of the
+# paid Claude API -- for comparing feature/model quality against a Claude run
+# on identical settings.
+#
+# Requires GEMINI_API_KEY in .env (free key at https://aistudio.google.com/apikey).
+#
+# Notes:
+# - Google's OpenAI-compatibility layer is documented as "still in beta" --
+#   structured outputs (response_format json_schema) are demonstrated in their
+#   docs, but max_output_tokens below (sent as max_completion_tokens) is not
+#   confirmed to be honored the same way as OpenAI/Groq; watch the first run.
+# - Free tier: content is used by Google to improve its products (unlike the
+#   paid tier). Fine for this public Kaggle dataset, but worth knowing.
+# - Exact RPM/TPM for your account aren't published -- check
+#   https://aistudio.google.com/rate-limit after creating your key.
+
+dataset:
+  name: spaceship_titanic
+  tables:
+    - name: passengers
+      path: data/spaceship_titanic/train.csv
+      role: primary
+  target_column: Transported
+  target_table: passengers
+  id_columns: [PassengerId]
+  time_column: null
+  known_leakage_columns: [Name]
+
+llm_provider:
+  backend: openai_compatible
+  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+  api_key_env: GEMINI_API_KEY
+
+model_tiers:
+  hypothesis: {model: gemini-2.5-flash, max_output_tokens: 8000}
+  codegen: {model: gemini-2.5-flash, max_output_tokens: 8000}
+  leakage_reviewer: {model: gemini-2.5-flash, max_output_tokens: 8000}
+
+stability:
+  method: bootstrap_resampling
+  bootstrap_iterations: 30
+
+holdout:
+  enabled: true
+  fraction: 0.15
+  method: random_stratified
+
+budget:
+  max_wall_clock_minutes: 60
+  max_total_tokens: 500000
+  stalled_iterations_before_escalation: 3
+
+sandbox:
+  backend: docker
+  timeout_seconds: 60
+  memory_limit: 1g
+  cpus: 1.0
+
+cv_folds: 5
+random_seed: 42
+hypotheses_per_iteration: 15
+
+output:
+  run_dir: runs/spaceship_titanic_gemini
+  knowledge_base_path: runs/spaceship_titanic_gemini/knowledge_base.duckdb
+  results_store_path: runs/spaceship_titanic_gemini/results_store.duckdb
+  feature_store_dir: runs/spaceship_titanic_gemini/feature_store
+  checkpoint_sqlite_path: runs/spaceship_titanic_gemini/checkpoints.sqlite

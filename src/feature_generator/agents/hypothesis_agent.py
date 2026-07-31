@@ -91,7 +91,11 @@ def propose_hypotheses(
     request_messages = [*messages, {"role": "user", "content": user_text}]
 
     response = llm_client.call(
-        tier, system_prompt=SYSTEM_PROMPT, messages=request_messages, output_schema=OUTPUT_SCHEMA
+        tier,
+        system_prompt=SYSTEM_PROMPT,
+        messages=request_messages,
+        output_schema=OUTPUT_SCHEMA,
+        max_tokens=tier.max_output_tokens,
     )
 
     updated_messages = [*request_messages, {"role": "assistant", "content": response.raw_content}]
